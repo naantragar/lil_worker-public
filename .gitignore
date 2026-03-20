@@ -1,0 +1,21 @@
+# Secrets
+bot/.env
+bot/.sessions.json
+
+# Python
+bot/.venv/
+__pycache__/
+*.pyc
+
+# Logs & runtime
+bot/*.log
+monitoring/monitor.log
+monitoring/monitor.log.old
+*.pid
+
+# Large SEO exports (CSV, raw dumps)
+seo/**/*.csv
+seo/**/*.xlsx
+
+# OS
+.DS_Store
