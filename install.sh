@@ -45,14 +45,14 @@ echo "[2/5] Node.js (>= 18 required for Claude CLI)..."
 
 _install_node_apt() {
   echo "      trying system repo..."
-  sudo apt-get install -y nodejs
+  sudo apt-get install -y nodejs npm
 }
 
 _install_node_nodesource() {
   echo "      adding nodesource repo (may take a few minutes)..."
   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
   echo "      installing nodejs..."
-  sudo apt-get install -y nodejs
+  sudo apt-get install -y nodejs npm
 }
 
 if command -v node &>/dev/null; then
