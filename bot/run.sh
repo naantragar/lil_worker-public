@@ -21,6 +21,11 @@ case "$1" in
     nohup env PYTHONUNBUFFERED=1 "$VENV_PYTHON" "$BOT_SCRIPT" >> "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     echo "Started (PID $!)"
+    # Auto-start watchdog if available and not running
+    WATCHDOG="$SCRIPT_DIR/watchdog.sh"
+    if [ -x "$WATCHDOG" ]; then
+      "$WATCHDOG" start 2>/dev/null
+    fi
     ;;
 
   stop)
