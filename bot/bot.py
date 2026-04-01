@@ -15,6 +15,7 @@ import base64
 import json
 import os
 import html
+import re
 import tempfile
 import logging
 import time
@@ -24,7 +25,7 @@ import mistune
 import openai
 from lingua import Language, LanguageDetectorBuilder
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import Message
+from aiogram.types import Message, FSInputFile
 from aiogram.filters import Command
 from aiogram.enums import ChatAction
 from aiogram.client.default import DefaultBotProperties
@@ -70,6 +71,102 @@ _LANG_NAMES = {
 def detect_language(text: str) -> str:
     lang = _lang_detector.detect_language_of(text)
     return _LANG_NAMES.get(lang, "Russian")
+
+
+# ── TTS (text-to-speech) for voice messages ──────────────────────────────────
+
+TTS_MODEL = "gpt-4o-mini-tts"
+TTS_VOICE = "marin"
+TEMP_DIR = Path(tempfile.gettempdir())
+
+# Pattern: [VOICE lang="en"]text to speak[/VOICE]
+_VOICE_RE = re.compile(
+    r'\[VOICE\s+lang=["\'](\w+)["\']\](.*?)\[/VOICE\]',
+    re.DOTALL,
+)
+
+
+def extract_voice_blocks(text: str) -> tuple[str, list[tuple[str, str]]]:
+    """Extract [VOICE] blocks from response text.
+
+    Returns (cleaned_text, [(lang, speech_text), ...])
+    """
+    blocks = []
+    for match in _VOICE_RE.finditer(text):
+        lang = match.group(1)
+        speech_text = match.group(2).strip()
+        if speech_text:
+            blocks.append((lang, speech_text))
+    cleaned = _VOICE_RE.sub("", text).strip()
+    return cleaned, blocks
+
+
+async def synthesize_speech(text: str, user_id: int) -> Path | None:
+    """Generate OGG Opus audio via OpenAI TTS."""
+    if not OPENAI_API_KEY:
+        logger.error("TTS: OPENAI_API_KEY not set")
+        return None
+    try:
+        client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
+        audio_path = TEMP_DIR / f"tts_{user_id}_{int(time.time())}.ogg"
+        async with client.audio.speech.with_streaming_response.create(
+            model=TTS_MODEL,
+            voice=TTS_VOICE,
+            input=text,
+            response_format="opus",
+        ) as response:
+            await response.stream_to_file(audio_path)
+        return audio_path
+    except Exception:
+        logger.exception("TTS synthesis failed")
+        return None
+
+
+async def send_voice_with_indicator(
+    message: Message, bot: Bot, vb_text: str, vb_lang: str, user_id: int
+):
+    """Show record_voice animation, synthesize TTS, send voice message."""
+    chat_id = message.chat.id
+    stop_event = asyncio.Event()
+
+    async def _record_voice_loop():
+        while not stop_event.is_set():
+            try:
+                await bot.send_chat_action(chat_id, ChatAction.RECORD_VOICE)
+            except Exception:
+                pass
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=4)
+            except asyncio.TimeoutError:
+                pass
+
+    # Cancel any lingering typing indicator before starting record_voice
+    try:
+        await bot.send_chat_action(chat_id, ChatAction.RECORD_VOICE)
+    except Exception:
+        pass
+    await asyncio.sleep(0.3)
+
+    loop_task = asyncio.create_task(_record_voice_loop())
+    try:
+        logger.info(f"TTS: generating voice ({vb_lang}), {len(vb_text)} chars")
+        audio_path = await synthesize_speech(vb_text, user_id)
+        if audio_path:
+            try:
+                await message.answer_voice(voice=FSInputFile(audio_path))
+            except Exception:
+                logger.exception("Failed to send voice message")
+            finally:
+                audio_path.unlink(missing_ok=True)
+        else:
+            await message.answer("❌ TTS generation failed.")
+    finally:
+        stop_event.set()
+        loop_task.cancel()
+        try:
+            await loop_task
+        except asyncio.CancelledError:
+            pass
 
 
 # ── Message debounce buffer (merges split long messages) ─────────────────────
@@ -118,9 +215,17 @@ async def _flush_buffer(user_id: int, bot: Bot):
         save_sessions(sessions)
         logger.warning(f"Cleared stale session for uid={user_id}")
 
-    response_html = markdown_to_telegram_html(response)
-    logger.info(f"Sending final: {len(response_html)} chars")
-    await send_long_message(reply_msg, response_html)
+    # Extract voice blocks (if any) before sending text
+    cleaned_response, voice_blocks = extract_voice_blocks(response)
+
+    if cleaned_response:
+        response_html = markdown_to_telegram_html(cleaned_response)
+        logger.info(f"Sending final: {len(response_html)} chars")
+        await send_long_message(reply_msg, response_html)
+
+    # Send voice messages with record_voice animation
+    for vb_lang, vb_text in voice_blocks:
+        await send_voice_with_indicator(reply_msg, bot, vb_text, vb_lang, user_id)
 
 
 # ── Session storage ───────────────────────────────────────────────────────────
@@ -401,6 +506,25 @@ async def run_claude_streaming(
     new_session_id = None
     last_notif_t = 0.0
 
+    # Heartbeat: notify user every 2 min of silence so they know Claude is still working
+    _hb_event = asyncio.Event()  # set each time a line arrives to reset the timer
+
+    async def _heartbeat():
+        total_secs = 0
+        while True:
+            _hb_event.clear()
+            try:
+                await asyncio.wait_for(_hb_event.wait(), timeout=300)
+            except asyncio.TimeoutError:
+                total_secs += 300
+                mins = total_secs // 60
+                try:
+                    await reply_msg.answer(f"⏳ Ещё работаю... ({mins} мин)")
+                except Exception:
+                    pass
+
+    heartbeat_task = asyncio.create_task(_heartbeat())
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -437,15 +561,34 @@ async def run_claude_streaming(
             _buf = _buf[idx + 1:]
             return result
 
+        # Instead of a hard timeout that kills legitimate long requests,
+        # poll in 30s intervals checking if the process is still alive.
+        # Heartbeat messages keep the user informed.
+        # Absolute safety net: 30 min (1800s).
+        _stream_start = time.monotonic()
+        _ABSOLUTE_TIMEOUT = 1800  # 30 min safety net
+        _POLL_INTERVAL = 30       # check process every 30s
+
         while True:
             try:
-                line_bytes = await asyncio.wait_for(_next_line(), timeout=300)
+                line_bytes = await asyncio.wait_for(_next_line(), timeout=_POLL_INTERVAL)
             except asyncio.TimeoutError:
-                logger.error("Claude streaming timeout (300s)")
-                proc.kill()
-                await proc.communicate()
-                final_result = "⏱ Timeout: Claude не ответил за 5 минут."
-                break
+                # No output for 30s — check if Claude process is still alive
+                if proc.returncode is not None:
+                    logger.error(f"Claude process died (rc={proc.returncode})")
+                    final_result = "Claude process unexpectedly stopped."
+                    break
+                elapsed = time.monotonic() - _stream_start
+                if elapsed > _ABSOLUTE_TIMEOUT:
+                    logger.error(f"Claude absolute timeout ({_ABSOLUTE_TIMEOUT}s)")
+                    proc.kill()
+                    await proc.communicate()
+                    final_result = "⏱ Timeout: Claude не ответил за 30 минут."
+                    break
+                # Process alive, under limit — keep waiting
+                continue
+
+            _hb_event.set()  # reset heartbeat timer — Claude is alive
 
             if not line_bytes:
                 break  # EOF
@@ -517,8 +660,13 @@ async def run_claude_streaming(
     finally:
         stop_typing.set()
         typing_task.cancel()
+        heartbeat_task.cancel()
         try:
             await typing_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await heartbeat_task
         except asyncio.CancelledError:
             pass
 
@@ -549,6 +697,31 @@ async def cmd_new(message: Message):
     sessions.pop(str(message.from_user.id), None)
     save_sessions(sessions)
     await message.answer("🗑 Session cleared. Next message starts fresh.")
+
+
+@router.message(Command("cv_token"))
+async def cmd_cv_token(message: Message):
+    if not is_allowed(message.from_user.id):
+        return
+    tokens_file = Path("/home/takopi_b/cv_site/tokens.json")
+    if not tokens_file.exists():
+        await message.answer("CV token pool not found.")
+        return
+    data = json.loads(tokens_file.read_text())
+    available = data.get("available", [])
+    if not available:
+        await message.answer("No tokens left. Generate more.")
+        return
+    token = available.pop(0)
+    data["available"] = available
+    data.setdefault("issued", []).append(token)
+    tokens_file.write_text(json.dumps(data, indent=2))
+    link = f"https://cv.engimini.com/?t={token}"
+    remaining = len(available)
+    await message.answer(
+        f"<code>{link}</code>\n\nLeft: {remaining}",
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("status"))
@@ -628,8 +801,14 @@ async def _flush_photo_buffer(user_id: int, bot: Bot):
         sessions.pop(str(user_id), None)
         save_sessions(sessions)
 
-    response_html = markdown_to_telegram_html(response)
-    await send_long_message(reply_msg, response_html)
+    cleaned_response, voice_blocks = extract_voice_blocks(response)
+
+    if cleaned_response:
+        response_html = markdown_to_telegram_html(cleaned_response)
+        await send_long_message(reply_msg, response_html)
+
+    for vb_lang, vb_text in voice_blocks:
+        await send_voice_with_indicator(reply_msg, bot, vb_text, vb_lang, user_id)
 
 
 @router.message(F.photo)
@@ -756,8 +935,14 @@ async def handle_voice(message: Message, bot: Bot):
         sessions.pop(str(user_id), None)
         save_sessions(sessions)
 
-    response_html = markdown_to_telegram_html(response)
-    await send_long_message(message, response_html)
+    cleaned_response, voice_blocks = extract_voice_blocks(response)
+
+    if cleaned_response:
+        response_html = markdown_to_telegram_html(cleaned_response)
+        await send_long_message(message, response_html)
+
+    for vb_lang, vb_text in voice_blocks:
+        await send_voice_with_indicator(message, bot, vb_text, vb_lang, user_id)
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -792,6 +977,10 @@ async def main():
         print("ERROR: Set TELEGRAM_BOT_TOKEN in .env")
         return
 
+    # Write own PID file — reliable even when run.sh gets killed mid-restart
+    pid_file = Path(__file__).parent / "lil_worker.pid"
+    pid_file.write_text(str(os.getpid()))
+
     print(f"Starting lil_worker bot (model: {CLAUDE_MODEL}, streaming: ON)...")
     print(f"Allowed users: {ALLOWED_USERS or 'Everyone (WARNING: set ALLOWED_USERS!)'}")
 
@@ -802,9 +991,20 @@ async def main():
     print("Bot running. Send a message on Telegram.")
 
     # Notify users that the bot has started (confirms restart completed successfully)
+    # Check for restart reason file — Claude writes it before calling run.sh restart
+    restart_reason_file = Path(__file__).parent / "restart_reason.txt"
+    startup_msg = "✅ Бот запущен."
+    if restart_reason_file.exists():
+        try:
+            reason = restart_reason_file.read_text().strip()
+            if reason:
+                startup_msg = f"{reason}\n\n✅ Бот запущен."
+            restart_reason_file.unlink()
+        except Exception:
+            pass
     for uid in ALLOWED_USERS:
         try:
-            await bot.send_message(uid, "✅ Бот запущен.")
+            await bot.send_message(uid, startup_msg)
         except Exception:
             pass
 

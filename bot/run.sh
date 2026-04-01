@@ -14,15 +14,29 @@ case "$1" in
       echo "Already running (PID $(cat "$PID_FILE"))"
       exit 1
     fi
+    # Clean up any ghost processes before starting
+    pkill -f "$VENV_PYTHON $BOT_SCRIPT" 2>/dev/null
+    sleep 0.3
+    pkill -9 -f "$VENV_PYTHON $BOT_SCRIPT" 2>/dev/null
     nohup env PYTHONUNBUFFERED=1 "$VENV_PYTHON" "$BOT_SCRIPT" >> "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     echo "Started (PID $!)"
     ;;
 
   stop)
+    STOPPED=false
+    # Kill by PID file
     if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
       kill "$(cat "$PID_FILE")"
-      rm -f "$PID_FILE"
+      STOPPED=true
+    fi
+    rm -f "$PID_FILE"
+    # Kill any remaining instances (prevents ghost processes)
+    pkill -f "$VENV_PYTHON $BOT_SCRIPT" 2>/dev/null && STOPPED=true
+    sleep 0.5
+    # Force kill if still alive
+    pkill -9 -f "$VENV_PYTHON $BOT_SCRIPT" 2>/dev/null
+    if $STOPPED; then
       echo "Stopped."
     else
       echo "Not running."
@@ -39,7 +53,14 @@ case "$1" in
     if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
       echo "Running (PID $(cat "$PID_FILE"))"
     else
-      echo "Not running."
+      # Fallback: check for running process even without PID file
+      LIVE_PID=$(pgrep -f "$VENV_PYTHON $BOT_SCRIPT" 2>/dev/null | head -1)
+      if [ -n "$LIVE_PID" ]; then
+        echo "$LIVE_PID" > "$PID_FILE"
+        echo "Running (PID $LIVE_PID, PID file recovered)"
+      else
+        echo "Not running."
+      fi
     fi
     ;;
 

@@ -1,4 +1,4 @@
-# lil_worker - Telegram -> Claude bridge
+# lil_worker — Telegram → Claude bridge
 
 Telegram-бот, який пропускає повідомлення через Claude Code CLI і відповідає назад у чат.
 Підтримує текст, голосові повідомлення, фото/альбоми, довгі відповіді, інструменти (Read, Write, Bash, WebFetch і т.д.).
@@ -7,16 +7,16 @@ Telegram-бот, який пропускає повідомлення через
 
 ## Що вміє
 
-- Текстові повідомлення -> Claude відповідає
-- Голосові повідомлення -> транскрипція (OpenAI Whisper) -> Claude
-- Фото та альбоми -> передача в Claude як base64
+- Прийом текстових повідомлень → Claude відповідає
+- Голосові повідомлення → транскрипція (OpenAI Whisper) → Claude
+- Фото та альбоми → передача в Claude як base64
 - Довгі відповіді автоматично розбиваються на частини по 4000 символів
 - Стрімінг: нотифікації про кожен інструмент надходять у реальному часі
-- Markdown -> Telegram HTML конвертація
+- Markdown → Telegram HTML конвертація
 - Автодетект мови (Ukrainian / Russian / English)
-- Сесії між повідомленнями (/new - нова сесія, /status - стан)
+- Сесії між повідомленнями (`/new` — нова сесія, `/status` — стан)
 - Whitelist користувачів (тільки дозволені Telegram ID)
-- Перемикання моделі без рестарту бота
+- Перемикання моделі через `model_config.json` без рестарту
 
 ---
 
@@ -24,22 +24,51 @@ Telegram-бот, який пропускає повідомлення через
 
 ```
 bot/
-  bot.py                  # основний код бота
-  run.sh                  # менеджер процесу (start/stop/restart/status)
-  requirements.txt        # Python залежності
-  .env                    # конфіг (створюється при setup)
-  .env.example            # приклад конфігу
-  model_config.json       # поточна модель Claude
-  transcribe_config.json  # мова транскрипції
-setup.sh                  # скрипт розгортання
+├── bot.py                  # основний код бота
+├── run.sh                  # менеджер процесу (start/stop/restart/status)
+├── requirements.txt        # Python залежності
+├── .env                    # конфіг (токени, дозволені юзери)
+├── model_config.json       # поточна модель Claude
+├── transcribe_config.json  # мова транскрипції
+├── .sessions.json          # сесії розмов (auto)
+├── lil_worker.log            # лог (auto)
+└── .venv/                  # Python venv (auto після setup)
+CLAUDE.md                   # база знань агента (identity + rules)
 ```
 
 ---
 
-## Розгортання на VPS - покроково
+## Вимоги
 
-### Що потрібно заздалегідь
+- Ubuntu 20.04+ / Debian
+- Python 3.10+
+- [Claude Code CLI](https://claude.ai/code) встановлений і авторизований (`claude` доступний глобально)
+- Telegram Bot Token (від @BotFather)
+- OpenAI API Key (для транскрипції голосу, опційно)
 
+---
+
+## Швидке розгортання (одна команда)
+
+```bash
+ssh root@your-server-ip
+curl -fsSL https://raw.githubusercontent.com/naantragar/lil_worker-public/main/install.sh | bash
+```
+
+Скрипт автоматично встановить все потрібне (git, Node.js, Claude CLI, Python venv, залежності).
+Після цього залишиться три кроки:
+
+```bash
+claude login                           # авторизація (відкриє посилання)
+cd ~/lil_worker && bash setup.sh       # введення токенів
+bot/run.sh start                       # запуск
+```
+
+---
+
+## Розгортання покроково (ручний варіант)
+
+Що потрібно заздалегідь:
 - VPS з Ubuntu 20.04+ (або Debian)
 - SSH-доступ до сервера (root або sudo-користувач)
 - Акаунт Anthropic з підпискою (для Claude Code CLI)
@@ -94,7 +123,7 @@ node --version
 npm install -g @anthropic-ai/claude-code
 ```
 
-Авторизуватись (відкриє посилання - скопіювати його та відкрити в браузері на будь-якому пристрої):
+Авторизуватись (відкриє посилання в браузері - скопіювати його та відкрити на будь-якому пристрої):
 
 ```bash
 claude login
@@ -138,9 +167,9 @@ bash setup.sh
 - Встановить залежності (aiogram, mistune, openai, lingua)
 
 Потім запитає три речі:
-- TELEGRAM_BOT_TOKEN: токен від @BotFather (довгий рядок типу 123456:ABC-DEF...)
-- ALLOWED_USERS: Telegram ID користувачів через кому (наприклад 123456789,987654321)
-- OPENAI_API_KEY: ключ OpenAI для голосових (або просто Enter щоб пропустити)
+- `TELEGRAM_BOT_TOKEN:` - токен від @BotFather (довгий рядок типу `123456:ABC-DEF...`)
+- `ALLOWED_USERS:` - Telegram ID користувачів через кому (наприклад `123456789,987654321`)
+- `OPENAI_API_KEY:` - ключ OpenAI для голосових (або просто Enter щоб пропустити)
 
 Як дізнатись свій Telegram ID: написати боту @userinfobot в Telegram.
 
@@ -174,7 +203,7 @@ tail -n 50 bot/lil_worker.log
 
 ---
 
-## Управління
+### Управління після встановлення
 
 ```bash
 cd ~/lil_worker
@@ -189,27 +218,54 @@ tail -n 50 bot/lil_worker.log   # подивитись логи
 
 ---
 
+## Конфіг (.env)
+
+```env
+TELEGRAM_BOT_TOKEN=your_token_here
+ALLOWED_USERS=123456789,987654321
+CLAUDE_MODEL=sonnet
+OPENAI_API_KEY=sk-...
+OPENAI_VOICE_MODEL=gpt-4o-mini-transcribe
+```
+
+`ALLOWED_USERS` — Telegram user ID через кому. Всі інші ігноруються.
+
+---
+
+## Управління
+
+```bash
+cd bot/
+./run.sh start    # запуск
+./run.sh stop     # зупинка
+./run.sh restart  # рестарт
+./run.sh status   # статус
+
+tail -n 50 lil_worker.log   # перегляд логів
+```
+
+---
+
 ## Перемикання моделі
 
-Редагувати bot/model_config.json - набуває чинності з наступного повідомлення, рестарт не потрібен:
+Редагувати `bot/model_config.json` — набуває чинності з наступного повідомлення, рестарт не потрібен:
 
 ```json
-{"model": "sonnet"}
-{"model": "opus"}
-{"model": "haiku"}
+{ "model": "sonnet" }   // claude-sonnet-4-6
+{ "model": "opus" }     // claude-opus-4-6
+{ "model": "haiku" }    // claude-haiku-4-5
 ```
 
 ---
 
 ## Транскрипція голосу
 
-bot/transcribe_config.json:
+`bot/transcribe_config.json`:
 
 ```json
-{"language": null, "temperature": 0.2}
-{"language": "uk", "temperature": 0.1}
-{"language": "ru", "temperature": 0.1}
-{"language": "en", "temperature": 0.1}
+{ "language": null, "temperature": 0.2 }    // авто-детект
+{ "language": "uk", "temperature": 0.1 }    // фіксована мова
+{ "language": "ru", "temperature": 0.1 }
+{ "language": "en", "temperature": 0.1 }
 ```
 
-language: null = авто-детект мови, або вказати фіксовану ("uk", "ru", "en").
