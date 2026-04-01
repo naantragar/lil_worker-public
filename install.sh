@@ -120,6 +120,13 @@ echo "[5/5] Python environment..."
 
 cd "$TARGET"
 
+# Ensure python3-venv is installed — on Ubuntu 24 need version-specific package
+if ! python3 -m venv --help &>/dev/null 2>&1; then
+  PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+  echo "      installing python${PY_VER}-venv..."
+  sudo apt-get install -y "python${PY_VER}-venv"
+fi
+
 if [ ! -d "bot/.venv" ]; then
   python3 -m venv bot/.venv
 fi
