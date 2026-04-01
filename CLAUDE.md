@@ -227,3 +227,24 @@ Say: "We just switched projects - want to do `/new` for a fresh session? This av
 When starting work on a new project that has no CLAUDE.md:
 - Offer to create one: "This project has no CLAUDE.md. Want me to create one to track architecture and conventions?"
 - Include: what the project does, tech stack, how to restart/deploy, key file paths
+
+---
+
+## Skill: markdown-new
+
+Convert any public URL to clean Markdown — much less tokens than raw HTML.
+
+- Script: `~/lil_worker/skills/markdown-new/scripts/markdown_new_fetch.py`
+- Policy: `policies/markdown-new.md` — when to use / not use, security rules
+- Docs: `docs/markdown-new.md` — command, parameters, examples
+
+**Quick reference:**
+```
+python3 ~/lil_worker/skills/markdown-new/scripts/markdown_new_fetch.py '<URL>'
+```
+- `--method auto|ai|browser` — browser for JS/SPA pages
+- `--output <file>` — save to file
+- No API key. Free, 500 req/day/IP. Public HTTPS only.
+
+**Use for:** articles, GitHub READMEs, public docs, wikis.
+**Don't use for:** pages behind login, internal URLs, URLs with tokens/secrets.
