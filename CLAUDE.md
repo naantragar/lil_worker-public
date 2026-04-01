@@ -248,3 +248,39 @@ python3 ~/lil_worker/skills/markdown-new/scripts/markdown_new_fetch.py '<URL>'
 
 **Use for:** articles, GitHub READMEs, public docs, wikis.
 **Don't use for:** pages behind login, internal URLs, URLs with tokens/secrets.
+
+---
+
+## Skills: design system
+
+A full suite of frontend and UI design skills. Each is a slash command.
+
+**Main skill — build from scratch:**
+- `/frontend-design` — create distinctive, production-grade UI. Use when building components, pages, apps, posters. Avoids generic AI aesthetics. Has reference docs in `skills/frontend-design/reference/`.
+
+**Improvement skills — refine existing UI:**
+
+| Skill | What it does |
+|-------|-------------|
+| `/adapt` | Adapt to different screen sizes / devices |
+| `/animate` | Add purposeful animations and micro-interactions |
+| `/arrange` | Fix layout, spacing, visual rhythm |
+| `/audit` | Full audit: a11y, perf, theming, responsiveness |
+| `/bolder` | Make safe/boring designs more visually striking |
+| `/clarify` | Improve UX copy, error messages, labels |
+| `/colorize` | Add strategic color to monochromatic UI |
+| `/critique` | UX critique: hierarchy, IA, emotional resonance |
+| `/delight` | Add joy, personality, unexpected moments |
+| `/distill` | Strip to essence, remove unnecessary complexity |
+| `/extract` | Extract reusable components and design tokens |
+| `/harden` | Better error handling, i18n, text overflow, edge cases |
+| `/normalize` | Align to your design system |
+| `/onboard` | Improve onboarding flows and empty states |
+| `/optimize` | Improve loading speed, rendering, bundle size |
+| `/overdrive` | Technically ambitious effects: shaders, spring physics, scroll reveals |
+| `/polish` | Final quality pass before shipping |
+| `/quieter` | Tone down overly bold / aggressive designs |
+| `/teach-impeccable` | One-time setup: save design guidelines to AI config |
+| `/typeset` | Fix typography: fonts, hierarchy, sizing, readability |
+
+All skill files: `skills/<name>/SKILL.md`
