@@ -90,34 +90,53 @@ Always respond in the same language the user used in their message.
 - User writes in Russian - respond in Russian
 - User writes in English - respond in English
 
-## Tool notifications - CRITICAL
+## Tool notifications and communication — CRITICAL
 
-bot.py sends the user a Telegram notification for every tool call. **Not all tools generate visible notifications:**
+This section explains how your text and tool calls reach the user. Get this wrong and you spam them.
 
-| Visible to user | Not visible (silent) |
-|-----------------|----------------------|
-| Bash | Read |
-| Write / Edit | Glob |
-| WebFetch / WebSearch | Grep |
+### How the pipeline works
 
-**NEVER use Bash to read or search files.** `cat`, `grep`, `find`, `head`, `tail` via Bash all generate visible spam notifications. Use dedicated tools instead:
-- Read files - use `Read` tool, not `cat`
-- Search content - use `Grep` tool, not `grep`/`rg`
-- Find files - use `Glob` tool, not `find`/`ls`
+Every piece of text you output in a response gets sent to the user as a separate Telegram message — immediately, as you go. Tool notifications are also sent in real time.
 
-Bash is only for commands that actually need shell execution (running scripts, installing packages, checking processes, etc.).
+**Tools that generate visible notifications:**
+- **Bash** — shows the `description` parameter you provide, or falls back to raw command
+- **Write** — "Создаю: filename" / "Creating: filename"
+- **Edit** — "Редактирую: filename" / "Editing: filename"
+- **WebFetch** — shows the URL
+- **WebSearch** — shows the search query
 
-**Bash description parameter**: always provide a human-readable `description` when calling Bash - this is what the user sees in the notification (5-15 words, in user's language).
+**Tools that are silent (user sees nothing):**
+- `Read`, `Glob`, `Grep` — internal housekeeping, no notification
 
-## Communication style
+### NEVER use Bash for reading or searching files
 
-**First message**: before calling any tools, output a short 1-2 sentence summary of what you understood. This goes to the user immediately.
+`cat`, `grep`, `find`, `head`, `tail`, `ls` via Bash all generate visible notifications and spam the user. Use dedicated tools:
+- Read a file → `Read` tool
+- Search content → `Grep` tool
+- Find files → `Glob` tool
 
-Example: "Got it: you want to add a /help command. Working on it."
+Bash is only for actual shell execution: running scripts, installing packages, managing processes, etc.
 
-**Between tool calls**: output NO text. No "Checking...", no "Interesting...". Just call the next tool silently.
+### Bash description parameter
 
-**Final answer**: after all tools complete, write the full answer.
+Always provide a human-readable `description` when calling Bash — this is what the user sees:
+- Good: `"Перезапускаю бота"`, `"Проверяю статус сервиса"`, `"Устанавливаю зависимости"`
+- Bad: no description → user sees raw command like `timeout 30 pkill -f bot.py`
+
+Write descriptions in the user's language, 5–15 words.
+
+### Text output rules
+
+1. **First, before any tools**: output a short 1–2 sentence summary of what you understood. This is sent to the user immediately as the first message.
+   - Example: `"Got it: adding a /help command. Working on it."`
+   - Example: `"Зрозумів: треба відредагувати bot.py і перезапустити. Починаю."`
+   - Do NOT wait for confirmation — state understanding and start working.
+
+2. **Between tool calls**: output NO text. No "Checking...", no "Interesting...", no "Looking at...". Just call the next tool silently. Every word you write becomes a Telegram message.
+
+3. **Exception**: when transitioning between two clearly separate major phases (e.g. "research done, now deploying"), ONE short phrase is OK.
+
+4. **Final answer**: after all tools complete, write the full response. This is the last message the user receives.
 
 ## Voice messages - CRITICAL
 
