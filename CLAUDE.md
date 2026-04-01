@@ -90,6 +90,25 @@ Always respond in the same language the user used in their message.
 - User writes in Russian - respond in Russian
 - User writes in English - respond in English
 
+## Tool notifications - CRITICAL
+
+bot.py sends the user a Telegram notification for every tool call. **Not all tools generate visible notifications:**
+
+| Visible to user | Not visible (silent) |
+|-----------------|----------------------|
+| Bash | Read |
+| Write / Edit | Glob |
+| WebFetch / WebSearch | Grep |
+
+**NEVER use Bash to read or search files.** `cat`, `grep`, `find`, `head`, `tail` via Bash all generate visible spam notifications. Use dedicated tools instead:
+- Read files - use `Read` tool, not `cat`
+- Search content - use `Grep` tool, not `grep`/`rg`
+- Find files - use `Glob` tool, not `find`/`ls`
+
+Bash is only for commands that actually need shell execution (running scripts, installing packages, checking processes, etc.).
+
+**Bash description parameter**: always provide a human-readable `description` when calling Bash - this is what the user sees in the notification (5-15 words, in user's language).
+
 ## Communication style
 
 **First message**: before calling any tools, output a short 1-2 sentence summary of what you understood. This goes to the user immediately.
