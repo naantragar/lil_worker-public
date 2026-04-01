@@ -139,3 +139,91 @@ After completing any task (with or without restart), always end with a clear fin
 - Whether it's working / ready to use
 
 Never go silent after the last tool call.
+
+---
+
+## Knowledge & Memory system
+
+Keep CLAUDE.md short - only summaries + links. Details go in separate files. Never duplicate text.
+
+### Type 1: Tools & services
+
+When user says "install X and add knowledge":
+1. Policy (rules, what's allowed) -> `policies/<tool>.md`
+2. Docs (install, commands, examples) -> `docs/<tool>.md`
+3. Add 5-10 line summary + links to CLAUDE.md
+
+### Type 2: Project knowledge
+
+When user says "remember this", "save this", "learn about X":
+1. Create detailed file -> `knowledge/<topic>.md`
+   - What it is, how it works, why it matters, key facts, links
+2. Add 2-3 line summary + link to CLAUDE.md
+
+Triggers: "remember", "save this", "add knowledge", "learn about"
+
+### Type 3: Episodic memory (sessions)
+
+Daily log: `sessions/YYYY-MM-DD.md` + quick-access `sessions/last_session.md`
+
+**On session start:**
+1. Read `sessions/last_session.md`
+2. Compare date in header with today's date
+3. If different date - previous session is done, create new `sessions/YYYY-MM-DD.md`
+4. If same date - append to current file
+
+**After significant work:**
+1. Update today's `sessions/YYYY-MM-DD.md`
+2. Copy content to `sessions/last_session.md`
+
+Multiple sessions per day: append to same file with `### Morning / Evening` separator.
+
+---
+
+## Working with multiple projects
+
+One server often has multiple projects. These rules prevent context confusion.
+
+### Entering a project
+
+When user says "let's work on X", "open project Y", "switch to Z":
+1. **Read their CLAUDE.md first** (or README.md if no CLAUDE.md) - understand architecture, restart rules, conventions
+2. Confirm to user: "Switched to project X. Reading their CLAUDE.md now."
+3. Work within that project's conventions
+4. If task is ambiguous - **ask before acting**
+
+### While in project mode
+
+- Their CLAUDE.md is project documentation, NOT your identity rules
+- After changes, update their CLAUDE.md to reflect what was done
+- Never mix file paths, configs, or commands from different projects
+- If user suddenly asks about another project mid-task - **stop and ask**: "Should we switch projects? I'm currently in X."
+
+### Exiting project mode
+
+When user says "done", "exit", "back to main", "finished with this project":
+- Confirm: "Exited project X, back to main context."
+- Reset your mental model - no more assumptions from that project's CLAUDE.md
+
+### Ambiguity rule - CRITICAL
+
+If unclear which project a task belongs to, or if user switches topic without explicitly saying so:
+**Always ask first, never guess.**
+
+Example: "Are you referring to project X or project Y? Or is this a general task?"
+
+### Session reset hint
+
+Suggest `/new` (fresh session) when:
+- User explicitly switches to a different project
+- Conversation has covered multiple unrelated topics
+- User seems confused about what context you're in
+- Long time has passed since session started
+
+Say: "We just switched projects - want to do `/new` for a fresh session? This avoids context mixing."
+
+### Each project should have its own CLAUDE.md
+
+When starting work on a new project that has no CLAUDE.md:
+- Offer to create one: "This project has no CLAUDE.md. Want me to create one to track architecture and conventions?"
+- Include: what the project does, tech stack, how to restart/deploy, key file paths
