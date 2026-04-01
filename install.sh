@@ -58,7 +58,13 @@ _install_node_nodesource() {
 if command -v node &>/dev/null; then
   NODE_MAJOR=$(node --version | sed 's/v\([0-9]*\).*/\1/')
   if [ "$NODE_MAJOR" -ge 18 ]; then
-    echo "      already installed ($(node --version)), skipping"
+    echo "      node $(node --version) ok"
+    # npm might be missing even if node is installed
+    if ! command -v npm &>/dev/null; then
+      echo "      npm missing, installing..."
+      sudo apt-get install -y npm
+    fi
+    echo "      node $(node --version), npm $(npm --version)"
   else
     echo "      found old version $(node --version), upgrading..."
     _install_node_nodesource
