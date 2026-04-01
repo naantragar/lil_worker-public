@@ -28,13 +28,13 @@ echo "[1/5] System packages..."
 
 if ! command -v git &>/dev/null || ! command -v curl &>/dev/null; then
   sudo apt-get update -qq
-  sudo apt-get install -y -qq git curl python3 python3-venv python3-pip > /dev/null
+  sudo apt-get install -y git curl python3 python3-venv python3-pip
   echo "      installed git, curl, python3"
 else
   # Ensure python3-venv is present even if git/curl exist
   if ! python3 -m venv --help &>/dev/null 2>&1; then
     sudo apt-get update -qq
-    sudo apt-get install -y -qq python3-venv > /dev/null
+    sudo apt-get install -y python3-venv
   fi
   echo "      already installed"
 fi
@@ -45,7 +45,7 @@ echo "[2/5] Node.js (>= 18 required for Claude CLI)..."
 
 _install_node_apt() {
   echo "      trying system repo..."
-  sudo apt-get install -y nodejs 2>/dev/null
+  sudo apt-get install -y nodejs
 }
 
 _install_node_nodesource() {
@@ -90,8 +90,9 @@ echo "[3/5] Claude Code CLI..."
 if command -v claude &>/dev/null; then
   echo "      already installed ($(claude --version 2>/dev/null || echo 'unknown version'))"
 else
-  npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
-  echo "      installed"
+  echo "      running: npm install -g @anthropic-ai/claude-code (may take 1-3 min)..."
+  npm install -g @anthropic-ai/claude-code
+  echo "      installed ($(claude --version 2>/dev/null || echo 'ok'))"
 fi
 
 # ── 4. Clone repo ────────────────────────────────────────────────────────────
