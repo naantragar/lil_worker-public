@@ -52,6 +52,12 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "sonnet")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_VOICE_MODEL = os.environ.get("OPENAI_VOICE_MODEL", "gpt-4o-mini-transcribe")
 
+# Optional: one-time token link generator (/token command)
+# TOKEN_SERVICE_URL — base URL, token is appended (e.g. https://mysite.com/?t=)
+# TOKEN_FILE — path to JSON file with {"available": [...], "issued": [...]}
+TOKEN_SERVICE_URL = os.environ.get("TOKEN_SERVICE_URL", "")
+TOKEN_FILE = os.environ.get("TOKEN_FILE", "")
+
 SESSION_FILE = Path(__file__).parent / ".sessions.json"
 TG_MSG_LIMIT = 4000
 
@@ -699,13 +705,19 @@ async def cmd_new(message: Message):
     await message.answer("🗑 Session cleared. Next message starts fresh.")
 
 
-@router.message(Command("cv_token"))
-async def cmd_cv_token(message: Message):
+@router.message(Command("token"))
+async def cmd_token(message: Message):
+    """Generate a one-time access link to a private service.
+    Configure via .env: TOKEN_SERVICE_URL and TOKEN_FILE.
+    """
     if not is_allowed(message.from_user.id):
         return
-    tokens_file = Path("/home/takopi_b/cv_site/tokens.json")
+    if not TOKEN_SERVICE_URL or not TOKEN_FILE:
+        await message.answer("Token service not configured. Set TOKEN_SERVICE_URL and TOKEN_FILE in .env")
+        return
+    tokens_file = Path(TOKEN_FILE)
     if not tokens_file.exists():
-        await message.answer("CV token pool not found.")
+        await message.answer("Token pool file not found.")
         return
     data = json.loads(tokens_file.read_text())
     available = data.get("available", [])
@@ -716,7 +728,7 @@ async def cmd_cv_token(message: Message):
     data["available"] = available
     data.setdefault("issued", []).append(token)
     tokens_file.write_text(json.dumps(data, indent=2))
-    link = f"https://cv.engimini.com/?t={token}"
+    link = f"{TOKEN_SERVICE_URL}{token}"
     remaining = len(available)
     await message.answer(
         f"<code>{link}</code>\n\nLeft: {remaining}",
