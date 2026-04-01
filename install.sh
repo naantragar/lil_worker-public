@@ -16,6 +16,13 @@
 
 set -e
 
+# On root (VPS, Docker) sudo doesn't exist — use direct commands
+if [ "$(id -u)" = "0" ]; then
+  SUDO=""
+else
+  SUDO="sudo"
+fi
+
 echo ""
 echo "=============================="
 echo "  lil_worker installer"
@@ -27,14 +34,14 @@ echo ""
 echo "[1/5] System packages..."
 
 if ! command -v git &>/dev/null || ! command -v curl &>/dev/null; then
-  sudo apt-get update -qq
-  sudo apt-get install -y git curl python3 python3-venv python3-pip
+  $SUDO apt-get update -qq
+  $SUDO apt-get install -y git curl python3 python3-venv python3-pip
   echo "      installed git, curl, python3"
 else
   # Ensure python3-venv is present even if git/curl exist
   if ! python3 -m venv --help &>/dev/null 2>&1; then
-    sudo apt-get update -qq
-    sudo apt-get install -y python3-venv
+    $SUDO apt-get update -qq
+    $SUDO apt-get install -y python3-venv
   fi
   echo "      already installed"
 fi
@@ -45,14 +52,14 @@ echo "[2/5] Node.js (>= 18 required for Claude CLI)..."
 
 _install_node_apt() {
   echo "      trying system repo..."
-  sudo apt-get install -y nodejs npm
+  $SUDO apt-get install -y nodejs npm
 }
 
 _install_node_nodesource() {
   echo "      adding nodesource repo (may take a few minutes)..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+  curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO bash -
   echo "      installing nodejs..."
-  sudo apt-get install -y nodejs npm
+  $SUDO apt-get install -y nodejs npm
 }
 
 if command -v node &>/dev/null; then
@@ -62,7 +69,7 @@ if command -v node &>/dev/null; then
     # npm might be missing even if node is installed
     if ! command -v npm &>/dev/null; then
       echo "      npm missing, installing..."
-      sudo apt-get install -y npm
+      $SUDO apt-get install -y npm
     fi
     echo "      node $(node --version), npm $(npm --version)"
   else
@@ -123,7 +130,7 @@ cd "$TARGET"
 # Install version-specific python venv package (Ubuntu 24 needs python3.12-venv)
 PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 echo "      python $PY_VER"
-sudo apt-get install -y "python${PY_VER}-venv" "python${PY_VER}-distutils" 2>/dev/null || true
+$SUDO apt-get install -y "python${PY_VER}-venv" "python${PY_VER}-distutils" 2>/dev/null || true
 
 # Remove broken venv if pip is missing
 if [ -d "bot/.venv" ] && [ ! -f "bot/.venv/bin/pip" ]; then
