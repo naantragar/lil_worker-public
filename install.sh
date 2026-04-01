@@ -122,8 +122,8 @@ cd "$TARGET"
 
 # Install version-specific python venv package (Ubuntu 24 needs python3.12-venv)
 PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-echo "      python $PY_VER, installing python${PY_VER}-venv..."
-sudo apt-get install -y "python${PY_VER}-venv"
+echo "      python $PY_VER"
+sudo apt-get install -y "python${PY_VER}-venv" "python${PY_VER}-distutils" 2>/dev/null || true
 
 # Remove broken venv if pip is missing
 if [ -d "bot/.venv" ] && [ ! -f "bot/.venv/bin/pip" ]; then
@@ -133,7 +133,13 @@ fi
 
 if [ ! -d "bot/.venv" ]; then
   echo "      creating venv..."
-  python3 -m venv bot/.venv
+  python3 -m venv bot/.venv || python3 -m venv --without-pip bot/.venv
+fi
+
+# Ensure pip is available — bootstrap if missing
+if [ ! -f "bot/.venv/bin/pip" ]; then
+  echo "      pip missing, bootstrapping..."
+  curl -sS https://bootstrap.pypa.io/get-pip.py | bot/.venv/bin/python3
 fi
 
 bot/.venv/bin/pip install --quiet --upgrade pip
