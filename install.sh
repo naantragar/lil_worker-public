@@ -39,24 +39,48 @@ else
   echo "      already installed"
 fi
 
-# ── 2. Node.js 22 ────────────────────────────────────────────────────────────
+# ── 2. Node.js ───────────────────────────────────────────────────────────────
 
-echo "[2/5] Node.js 22..."
+echo "[2/5] Node.js (>= 18 required for Claude CLI)..."
+
+_install_node_apt() {
+  echo "      trying system repo..."
+  sudo apt-get install -y nodejs 2>/dev/null
+}
+
+_install_node_nodesource() {
+  echo "      adding nodesource repo (may take a few minutes)..."
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+  echo "      installing nodejs..."
+  sudo apt-get install -y nodejs
+}
 
 if command -v node &>/dev/null; then
   NODE_MAJOR=$(node --version | sed 's/v\([0-9]*\).*/\1/')
   if [ "$NODE_MAJOR" -ge 18 ]; then
-    echo "      already installed ($(node --version))"
+    echo "      already installed ($(node --version)), skipping"
   else
-    echo "      upgrading from $(node --version)..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - > /dev/null 2>&1
-    sudo apt-get install -y -qq nodejs > /dev/null
-    echo "      installed $(node --version)"
+    echo "      found old version $(node --version), upgrading..."
+    _install_node_nodesource
+    echo "      upgraded to $(node --version)"
   fi
 else
-  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - > /dev/null 2>&1
-  sudo apt-get install -y -qq nodejs > /dev/null
-  echo "      installed $(node --version)"
+  # Try system repo first (fast, works on Ubuntu 22.04+)
+  _install_node_apt
+  if command -v node &>/dev/null; then
+    NODE_MAJOR=$(node --version | sed 's/v\([0-9]*\).*/\1/')
+    if [ "$NODE_MAJOR" -ge 18 ]; then
+      echo "      installed $(node --version) from system repo"
+    else
+      echo "      system repo gave old $(node --version), switching to nodesource..."
+      _install_node_nodesource
+      echo "      installed $(node --version)"
+    fi
+  else
+    # Fallback to nodesource
+    _install_node_nodesource
+    echo "      installed $(node --version)"
+  fi
 fi
 
 # ── 3. Claude Code CLI ───────────────────────────────────────────────────────
@@ -94,7 +118,8 @@ if [ ! -d "bot/.venv" ]; then
 fi
 
 bot/.venv/bin/pip install --quiet --upgrade pip
-bot/.venv/bin/pip install --quiet -r bot/requirements.txt
+echo "      installing python packages..."
+bot/.venv/bin/pip install -r bot/requirements.txt
 echo "      dependencies installed"
 
 # Make scripts executable
